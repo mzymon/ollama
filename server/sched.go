@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"syscall"
+	"os/exec"
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/discover"
@@ -100,6 +102,96 @@ func (s *Scheduler) GetRunner(c context.Context, model *Model, opts api.Options,
 	return req.successCh, req.errCh
 }
 
+func isExternalBackgroundProcessRunning(cmd *exec.Cmd) (bool, error) {
+	if cmd == nil || cmd.Process == nil {
+		slog.Debug("No process to check")
+		return false, nil
+	}
+    // Try to send a signal 0 to the process. If successful, it means the process is running.
+    err := cmd.Process.Signal(syscall.Signal(0))
+    if err == syscall.ESRCH {
+        slog.Info("Process not found", "error", err)
+        return false, nil
+    }
+    if err != nil {
+        slog.Error("Error checking process", "error", err)
+        return false, err
+    }
+    slog.Debug("Process is running")
+    return true, nil
+}
+
+func runExternalBackgroundProcessWhenNoLoadedModels(s *Scheduler) error {
+	var cmd *exec.Cmd
+    for {
+		slog.Info("ExternalBackgroundProces - Waiting 5s")
+		time.Sleep(5 * time.Second)
+
+        s.loadedMu.Lock()
+		isEmpty := len(s.loaded) == 0
+		loadedCount := len(s.loaded)
+        s.loadedMu.Unlock()
+		
+        if isEmpty && cmd == nil {
+            slog.Info("No loaded models, starting background process")
+            cmd = startExternalBackgroundProcess()
+        } else if !isEmpty && cmd != nil {
+            slog.Info("Loaded models present, stopping background process", "loaded_count", loadedCount)
+            stopExternalBackgroundProcess(cmd)
+            cmd = nil
+        } else {
+			running, err := isExternalBackgroundProcessRunning(cmd)
+			if err != nil {
+				slog.Error("Error checking if external process is running", "error", err)
+			}
+            if err == nil && !running {
+                slog.Info("External process not running, resetting cmd")
+                cmd = nil
+			}
+			slog.Debug("Loaded models count and background process status", "loaded_count", loadedCount, "external_process_running", running)
+    	}
+	}
+
+    return nil
+}
+
+func startExternalBackgroundProcess() *exec.Cmd {
+	cmdPath := os.Getenv("OLLAMA_BACKGROUND_PROCESS_PATH")
+	argsStr := os.Getenv("OLLAMA_BACKGROUND_PROCESS_ARGS")
+	var args []string
+	if argsStr != "" {
+		args = strings.Split(argsStr, " ")
+	}
+	if cmdPath == "" {
+		slog.Info("OLLAMA_BACKGROUND_PROCESS_PATH empty, nothing to start as background process")
+		return nil
+	}
+
+    cmd := exec.Command(cmdPath, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = cmd.Stdout
+	slog.Info("Starting background process", "cmd_path", cmdPath)
+    err := cmd.Start()
+    if err != nil {
+        slog.Error("Error starting background process", "error", err)
+        return nil
+    }
+
+    return cmd
+}
+
+func stopExternalBackgroundProcess(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		slog.Debug("No process to stop")
+		return
+    }
+	slog.Info("Stopping background process")
+	err := cmd.Process.Kill()
+	if err != nil {
+		slog.Error("Error killing background process", "error", err)
+	}
+}
+
 // Returns immediately, spawns go routines for the scheduler which will shutdown when ctx is done
 func (s *Scheduler) Run(ctx context.Context) {
 	slog.Debug("starting llm scheduler")
@@ -110,6 +202,8 @@ func (s *Scheduler) Run(ctx context.Context) {
 	go func() {
 		s.processCompleted(ctx)
 	}()
+
+	go runExternalBackgroundProcessWhenNoLoadedModels(s)
 }
 
 func (s *Scheduler) processPending(ctx context.Context) {
