@@ -72,7 +72,7 @@ var (
 	errBadTemplate = errors.New("template error")
 )
 
-func modelOptions(model *Model, requestOpts map[string]interface{}) (api.Options, error) {
+func modelOptions(model *Model, requestOpts map[string]any) (api.Options, error) {
 	opts := api.DefaultOptions()
 	if err := opts.FromMap(model.Options); err != nil {
 		return api.Options{}, err
@@ -308,11 +308,10 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 			Options: opts,
 		}, func(cr llm.CompletionResponse) {
 			res := api.GenerateResponse{
-				Model:      req.Model,
-				CreatedAt:  time.Now().UTC(),
-				Response:   cr.Content,
-				Done:       cr.Done,
-				DoneReason: cr.DoneReason,
+				Model:     req.Model,
+				CreatedAt: time.Now().UTC(),
+				Response:  cr.Content,
+				Done:      cr.Done,
 				Metrics: api.Metrics{
 					PromptEvalCount:    cr.PromptEvalCount,
 					PromptEvalDuration: cr.PromptEvalDuration,
@@ -326,6 +325,7 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 			}
 
 			if cr.Done {
+				res.DoneReason = cr.DoneReason.String()
 				res.TotalDuration = time.Since(checkpointStart)
 				res.LoadDuration = checkpointLoaded.Sub(checkpointStart)
 
@@ -826,7 +826,7 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 	cs := 30
 	for k, v := range m.Options {
 		switch val := v.(type) {
-		case []interface{}:
+		case []any:
 			for _, nv := range val {
 				params = append(params, fmt.Sprintf("%-*s %#v", cs, k, nv))
 			}
@@ -1152,17 +1152,18 @@ func (s *Server) GenerateRoutes(rc *ollama.Registry) (http.Handler, error) {
 		"X-Requested-With",
 
 		// OpenAI compatibility headers
-		"x-stainless-lang",
-		"x-stainless-package-version",
-		"x-stainless-os",
+		"OpenAI-Beta",
 		"x-stainless-arch",
+		"x-stainless-async",
+		"x-stainless-custom-poll-interval",
+		"x-stainless-helper-method",
+		"x-stainless-lang",
+		"x-stainless-os",
+		"x-stainless-package-version",
+		"x-stainless-poll-helper",
 		"x-stainless-retry-count",
 		"x-stainless-runtime",
 		"x-stainless-runtime-version",
-		"x-stainless-async",
-		"x-stainless-helper-method",
-		"x-stainless-poll-helper",
-		"x-stainless-custom-poll-interval",
 		"x-stainless-timeout",
 	}
 	corsConfig.AllowOrigins = envconfig.AllowedOrigins()
@@ -1336,7 +1337,7 @@ func Serve(ln net.Listener) error {
 	return nil
 }
 
-func waitForStream(c *gin.Context, ch chan interface{}) {
+func waitForStream(c *gin.Context, ch chan any) {
 	c.Header("Content-Type", "application/json")
 	for resp := range ch {
 		switch r := resp.(type) {
@@ -1533,11 +1534,10 @@ func (s *Server) ChatHandler(c *gin.Context) {
 			Options: opts,
 		}, func(r llm.CompletionResponse) {
 			res := api.ChatResponse{
-				Model:      req.Model,
-				CreatedAt:  time.Now().UTC(),
-				Message:    api.Message{Role: "assistant", Content: r.Content},
-				Done:       r.Done,
-				DoneReason: r.DoneReason,
+				Model:     req.Model,
+				CreatedAt: time.Now().UTC(),
+				Message:   api.Message{Role: "assistant", Content: r.Content},
+				Done:      r.Done,
 				Metrics: api.Metrics{
 					PromptEvalCount:    r.PromptEvalCount,
 					PromptEvalDuration: r.PromptEvalDuration,
@@ -1547,6 +1547,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 			}
 
 			if r.Done {
+				res.DoneReason = r.DoneReason.String()
 				res.TotalDuration = time.Since(checkpointStart)
 				res.LoadDuration = checkpointLoaded.Sub(checkpointStart)
 			}

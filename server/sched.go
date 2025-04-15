@@ -40,7 +40,7 @@ type Scheduler struct {
 	pendingReqCh  chan *LlmRequest
 	finishedReqCh chan *LlmRequest
 	expiredCh     chan *runnerRef
-	unloadedCh    chan interface{}
+	unloadedCh    chan any
 
 	loaded   map[string]*runnerRef
 	loadedMu sync.Mutex
@@ -70,7 +70,7 @@ func InitScheduler(ctx context.Context) *Scheduler {
 		pendingReqCh:  make(chan *LlmRequest, maxQueue),
 		finishedReqCh: make(chan *LlmRequest, maxQueue),
 		expiredCh:     make(chan *runnerRef, maxQueue),
-		unloadedCh:    make(chan interface{}, maxQueue),
+		unloadedCh:    make(chan any, maxQueue),
 		loaded:        make(map[string]*runnerRef),
 		newServerFn:   llm.NewLlamaServer,
 		getGpuFn:      discover.GetGPUInfo,
@@ -712,8 +712,8 @@ func (runner *runnerRef) needsReload(ctx context.Context, req *LlmRequest) bool 
 // a before and after GPU memory allocation.  The returned channel
 // will be notified when we're done waiting, or have timed out and should
 // proceed anyway
-func (runner *runnerRef) waitForVRAMRecovery() chan interface{} {
-	finished := make(chan interface{}, 1)
+func (runner *runnerRef) waitForVRAMRecovery() chan any {
+	finished := make(chan any, 1)
 
 	// CPU or Metal don't need checking, so no waiting required
 	// windows can page VRAM, only cuda currently can report accurate used vram usage
@@ -761,13 +761,19 @@ func (runner *runnerRef) waitForVRAMRecovery() chan interface{} {
 	return finished
 }
 
-type ByDuration []*runnerRef
+type ByDurationAndName []*runnerRef
 
-func (a ByDuration) Len() int      { return len(a) }
-func (a ByDuration) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a ByDuration) Less(i, j int) bool {
-	// uint64 to turn negative time (never unload) to largest
-	return uint64(a[i].sessionDuration) < uint64(a[j].sessionDuration)
+func (a ByDurationAndName) Len() int      { return len(a) }
+func (a ByDurationAndName) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ByDurationAndName) Less(i, j int) bool {
+	// Primary sort by session duration (uint64 to handle negatives)
+	d1 := uint64(a[i].sessionDuration)
+	d2 := uint64(a[j].sessionDuration)
+	if d1 != d2 {
+		return d1 < d2
+	}
+	// Secondary sort by model path lex order
+	return a[i].modelPath < a[j].modelPath
 }
 
 // TODO - future consideration to pick runners based on size
@@ -869,7 +875,7 @@ func (s *Scheduler) findRunnerToUnload() *runnerRef {
 
 	// In the future we can enhance the algorithm to be smarter about picking the optimal runner to unload
 	// e.g., if we have multiple options, will one make room for the request?
-	sort.Sort(ByDuration(runnerList))
+	sort.Sort(ByDurationAndName(runnerList))
 
 	// First try to find a runner that's already idle
 	for _, runner := range runnerList {

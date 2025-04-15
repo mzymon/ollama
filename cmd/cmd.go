@@ -268,7 +268,7 @@ func RunHandler(cmd *cobra.Command, args []string) error {
 	opts := runOptions{
 		Model:    args[0],
 		WordWrap: os.Getenv("TERM") == "xterm-256color",
-		Options:  map[string]interface{}{},
+		Options:  map[string]any{},
 	}
 
 	format, err := cmd.Flags().GetString("format")
@@ -852,7 +852,7 @@ type runOptions struct {
 	Format      string
 	System      string
 	Images      []api.ImageData
-	Options     map[string]interface{}
+	Options     map[string]any
 	MultiModal  bool
 	KeepAlive   *api.Duration
 }
@@ -1381,7 +1381,6 @@ func NewCLI() *cobra.Command {
 				envVars["OLLAMA_NOPRUNE"],
 				envVars["OLLAMA_ORIGINS"],
 				envVars["OLLAMA_SCHED_SPREAD"],
-				envVars["OLLAMA_TMPDIR"],
 				envVars["OLLAMA_FLASH_ATTENTION"],
 				envVars["OLLAMA_KV_CACHE_TYPE"],
 				envVars["OLLAMA_LLM_LIBRARY"],
