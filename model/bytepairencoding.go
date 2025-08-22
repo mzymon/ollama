@@ -22,7 +22,7 @@ var _ TextProcessor = (*BytePairEncoding)(nil)
 
 func NewBytePairEncoding(pre string, vocab *Vocabulary) BytePairEncoding {
 	return BytePairEncoding{
-		pre:   regexp2.MustCompile(pre, regexp2.Unicode|regexp2.RE2),
+		pre:   regexp2.MustCompile(pre, regexp2.None),
 		vocab: vocab,
 	}
 }
@@ -109,7 +109,7 @@ func (bpe BytePairEncoding) Encode(s string, addSpecial bool) ([]int32, error) {
 					r = 0x0143
 				case r <= 0x0020:
 					r = r + 0x0100
-				case r >= 0x007e && r <= 0x00a0:
+				case r >= 0x007f && r <= 0x00a0:
 					r = r + 0x00a2
 				}
 
