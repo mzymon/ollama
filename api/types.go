@@ -106,6 +106,14 @@ type GenerateRequest struct {
 	// before this option was introduced)
 	Think *ThinkValue `json:"think,omitempty"`
 
+	// Truncate is a boolean that, when set to true, truncates the chat history messages
+	// if the rendered prompt exceeds the context length limit.
+	Truncate *bool `json:"truncate,omitempty"`
+
+	// Shift is a boolean that, when set to true, shifts the chat history
+	// when hitting the context length limit instead of erroring.
+	Shift *bool `json:"shift,omitempty"`
+
 	// DebugRenderOnly is a debug option that, when set to true, returns the rendered
 	// template instead of calling the model.
 	DebugRenderOnly bool `json:"_debug_render_only,omitempty"`
@@ -140,6 +148,14 @@ type ChatRequest struct {
 	// for supported models.
 	Think *ThinkValue `json:"think,omitempty"`
 
+	// Truncate is a boolean that, when set to true, truncates the chat history messages
+	// if the rendered prompt exceeds the context length limit.
+	Truncate *bool `json:"truncate,omitempty"`
+
+	// Shift is a boolean that, when set to true, shifts the chat history
+	// when hitting the context length limit instead of erroring.
+	Shift *bool `json:"shift,omitempty"`
+
 	// DebugRenderOnly is a debug option that, when set to true, returns the rendered
 	// template instead of calling the model.
 	DebugRenderOnly bool `json:"_debug_render_only,omitempty"`
@@ -165,10 +181,11 @@ type Message struct {
 	Content string `json:"content"`
 	// Thinking contains the text that was inside thinking tags in the
 	// original model output when ChatRequest.Think is enabled.
-	Thinking  string      `json:"thinking,omitempty"`
-	Images    []ImageData `json:"images,omitempty"`
-	ToolCalls []ToolCall  `json:"tool_calls,omitempty"`
-	ToolName  string      `json:"tool_name,omitempty"`
+	Thinking   string      `json:"thinking,omitempty"`
+	Images     []ImageData `json:"images,omitempty"`
+	ToolCalls  []ToolCall  `json:"tool_calls,omitempty"`
+	ToolName   string      `json:"tool_name,omitempty"`
+	ToolCallID string      `json:"tool_call_id,omitempty"`
 }
 
 func (m *Message) UnmarshalJSON(b []byte) error {
@@ -184,11 +201,12 @@ func (m *Message) UnmarshalJSON(b []byte) error {
 }
 
 type ToolCall struct {
+	ID       string           `json:"id,omitempty"`
 	Function ToolCallFunction `json:"function"`
 }
 
 type ToolCallFunction struct {
-	Index     int                       `json:"index,omitempty"`
+	Index     int                       `json:"index"`
 	Name      string                    `json:"name"`
 	Arguments ToolCallFunctionArguments `json:"arguments"`
 }
@@ -250,9 +268,9 @@ func (pt PropertyType) String() string {
 
 type ToolProperty struct {
 	AnyOf       []ToolProperty `json:"anyOf,omitempty"`
-	Type        PropertyType   `json:"type"`
+	Type        PropertyType   `json:"type,omitempty"`
 	Items       any            `json:"items,omitempty"`
-	Description string         `json:"description"`
+	Description string         `json:"description,omitempty"`
 	Enum        []any          `json:"enum,omitempty"`
 }
 
@@ -316,7 +334,7 @@ func (t *ToolFunctionParameters) String() string {
 
 type ToolFunction struct {
 	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
+	Description string                 `json:"description,omitempty"`
 	Parameters  ToolFunctionParameters `json:"parameters"`
 }
 
@@ -936,7 +954,7 @@ func (t *ThinkValue) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	return fmt.Errorf("think must be a boolean or string (\"high\", \"medium\", \"low\")")
+	return fmt.Errorf("think must be a boolean or string (\"high\", \"medium\", \"low\", true, or false)")
 }
 
 // MarshalJSON implements json.Marshaler

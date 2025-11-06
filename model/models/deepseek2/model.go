@@ -150,7 +150,9 @@ func (moe *sparse) Moe(ctx ml.Context, hiddenStates, topKIndices, topKWeights ml
 }
 
 func (moe *sparse) topKIndices(ctx ml.Context, scores ml.Tensor, opts *Options) ml.Tensor {
-	scores = scores.Add(ctx, moe.ExpProbsBias)
+	if moe.ExpProbsBias != nil {
+		scores = scores.Add(ctx, moe.ExpProbsBias)
+	}
 	topKIndices := scores.TopK(ctx, opts.numExpertsUsed)
 	return topKIndices
 }
@@ -300,7 +302,7 @@ func (m Model) Shift(ctx ml.Context, layer int, key, shift ml.Tensor) (ml.Tensor
 }
 
 func (m *Model) Forward(ctx ml.Context, batch input.Batch) (ml.Tensor, error) {
-	positions := ctx.Input().FromIntSlice(batch.Positions, len(batch.Positions))
+	positions := ctx.Input().FromInts(batch.Positions, len(batch.Positions))
 
 	hiddenStates := m.TokenEmbedding.Forward(ctx, batch.Inputs)
 
